@@ -1,6 +1,8 @@
+from ast import BitAnd
 from cProfile import label
+from cgi import test
 import sys
-from cv2 import bitwise_not
+from cv2 import bitwise_and, bitwise_not, bitwise_or
 import pandas as pd
 from sklearn.cluster import KMeans
 import keyboard
@@ -46,7 +48,7 @@ def mask_over(img,imgbg):
     for i in range(lth):
         if d2[i] > 250:
             d1[i] = 255
-    n=5
+    n=2
     km =KMeans(n_clusters=n)
     km.fit(d1)
     lss  = []
@@ -84,6 +86,27 @@ def totalwt(img):
             if img[i,j]>250:
                 wt+=1
     return  wt/(x*y)
+
+def threaholding_image_1(img):
+    sharpen = cv2.GaussianBlur(img, (0,0), 3)
+    sharpen = cv2.addWeighted(img, 1.5, sharpen, -0.5, 0)
+    gray = cv2.adaptiveThreshold(sharpen, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 15)
+    return gray
+def threaholding_image(img):
+    test=cv2.threshold(img, 0, 255,cv2.THRESH_BINARY|cv2.THRESH_OTSU)[1]
+    if totalwt(test) <0.5:
+        img=turn_over_gray(img)
+        test=bitwise_not(test)
+    img=bitwise_or(test,threaholding_image_1(img))
+    return img
+def gray_image(img):
+    imgbackup = img
+    img = three_split(img)
+    if totalwt(img) <0.5:
+        img=turn_over_gray(img)
+        imgbackup=turn_over_gray(imgbackup)
+    img=mask_over(imgbackup,img)
+    return img
 class CaptureScreen(QWidget):
     # 初始化变量
     beginPosition = None
@@ -196,16 +219,8 @@ class CaptureScreen(QWidget):
         ptr = pix.bits()
         ptr.setsize(height * width * 4)
         img = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        # img = cv2.GaussianBlur(img, (5, 5), 1)
-        imgbackup = img
-        # img=cv2.threshold(guassian, 0, 255,cv2.THRESH_BINARY|cv2.THRESH_OTSU)[1]
-        img = three_split(img)
-        if totalwt(img) <0.5:
-            img=turn_over_gray(img)
-            imgbackup=turn_over_gray(imgbackup)
-        img=mask_over(imgbackup,img)
-        # img = cv2.GaussianBlur(img, (9, 9), 0.4)
+        img=cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        img=threaholding_image(img)
         cv2.imwrite('clipboard.jpg', img)
         subprocess.run(["osascript", "-e", 'set the clipboard to (read (POSIX file "clipboard.jpg") as JPEG picture)'])
 if __name__ == "__main__":

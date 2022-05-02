@@ -1,4 +1,8 @@
+from cProfile import label
 import sys
+from cv2 import bitwise_not
+import pandas as pd
+from sklearn.cluster import KMeans
 import keyboard
 import cv2
 import numpy as np
@@ -9,7 +13,77 @@ from PIL import Image, ImageGrab
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt, qAbs, QRect
 from PyQt5.QtGui import QPen, QPainter, QColor, QGuiApplication,QImage
+def three_split(img):
+    imgInfo = img.shape
+    height = imgInfo[0]
+    width = imgInfo[1]
+    dst = np.zeros((height,width),np.uint8)
+    d1 = img.reshape(-1,1)
+    lth = d1.shape[0]
+    n=3
+    km =KMeans(n_clusters=n)
+    km.fit(d1)
+    lss  = []
+    ls = [0,1,2,3,4,5,6,7,8,9,10]
+    for i in range(n):
+        lss.append((km.cluster_centers_[i][0],i))
+    lss.sort()
+    for i in range(n):
+        ls[lss[i][1]]=i
+    d1 = np.array(pd.Series(km.labels_).to_list())
+    for i in range(lth):
+        d1[i] = int(255.0*ls[d1[i]]/(n-1))
+    d1 = d1.reshape((height,width))
+    return d1
+def mask_over(img,imgbg):
+    imgInfo = img.shape
+    height = imgInfo[0]
+    width = imgInfo[1]
+    dst = np.zeros((height,width),np.uint8)
+    d1 = img.reshape(-1,1)
+    d2 = imgbg.reshape(-1,1)
+    lth = d1.shape[0]
+    for i in range(lth):
+        if d2[i] > 250:
+            d1[i] = 255
+    n=5
+    km =KMeans(n_clusters=n)
+    km.fit(d1)
+    lss  = []
+    ls = [0,1,2,3,4,5,6,7,8,9,10]
+    for i in range(n):
+        lss.append((km.cluster_centers_[i][0],i))
+    lss.sort()
+    for i in range(n):
+        ls[lss[i][1]]=i
 
+    # ser=pd.Series(km.labels_)
+    # res0Series = pd.Series(km.labels_)
+    # res0 = res0Series[km.values == 1]
+    d1 = np.array(pd.Series(km.labels_).to_list())
+    for i in range(lth):
+        d1[i] = int(255.0*ls[d1[i]]/(n-1))
+    d1 = d1.reshape((height,width))
+    print(d1.shape)
+    return d1
+def turn_over_gray(img):
+    imgInfo = img.shape
+    height = imgInfo[0]
+    width = imgInfo[1]
+    dst = np.zeros((height,width),np.uint8)
+    for i in range(height):
+        for j in range(width):
+            gray = img[i,j]
+            dst[i,j] = 255-gray
+    return dst
+def totalwt(img):
+    x,y= img.shape
+    wt = 0
+    for i in range(x):
+        for j in range(y):
+            if img[i,j]>250:
+                wt+=1
+    return  wt/(x*y)
 class CaptureScreen(QWidget):
     # 初始化变量
     beginPosition = None
@@ -123,8 +197,15 @@ class CaptureScreen(QWidget):
         ptr.setsize(height * width * 4)
         img = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
         img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        guassian = cv2.GaussianBlur(img, (9, 9), 0.5)
-        img=cv2.threshold(guassian, 0, 255,cv2.THRESH_BINARY|cv2.THRESH_OTSU)[1]
+        # img = cv2.GaussianBlur(img, (5, 5), 1)
+        imgbackup = img
+        # img=cv2.threshold(guassian, 0, 255,cv2.THRESH_BINARY|cv2.THRESH_OTSU)[1]
+        img = three_split(img)
+        if totalwt(img) <0.5:
+            img=turn_over_gray(img)
+            imgbackup=turn_over_gray(imgbackup)
+        img=mask_over(imgbackup,img)
+        # img = cv2.GaussianBlur(img, (9, 9), 0.4)
         cv2.imwrite('clipboard.jpg', img)
         subprocess.run(["osascript", "-e", 'set the clipboard to (read (POSIX file "clipboard.jpg") as JPEG picture)'])
 if __name__ == "__main__":

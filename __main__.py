@@ -5,4 +5,3 @@ def screenshot():
 if __name__ == '__main__':
     keyboard.add_hotkey("f1",screenshot)
     keyboard.wait()
-    

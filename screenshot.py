@@ -15,6 +15,10 @@ from PIL import Image, ImageGrab
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt, qAbs, QRect
 from PyQt5.QtGui import QPen, QPainter, QColor, QGuiApplication,QImage
+from img_threshold import img_threshold
+import time
+localtime = time.localtime(time.time())
+file_date_name=str(localtime.tm_year)+'_'+str(localtime.tm_mon)+'_'+str(localtime.tm_mday)+'_'+str(localtime.tm_hour)+'_'+str(localtime.tm_min)+'_'+str(localtime.tm_sec)+'.jpg'
 def three_split(img):
     imgInfo = img.shape
     height = imgInfo[0]
@@ -37,6 +41,7 @@ def three_split(img):
         d1[i] = int(255.0*ls[d1[i]]/(n-1))
     d1 = d1.reshape((height,width))
     return d1
+
 def mask_over(img,imgbg):
     imgInfo = img.shape
     height = imgInfo[0]
@@ -73,10 +78,8 @@ def turn_over_gray(img):
     height = imgInfo[0]
     width = imgInfo[1]
     dst = np.zeros((height,width),np.uint8)
-    for i in range(height):
-        for j in range(width):
-            gray = img[i,j]
-            dst[i,j] = 255-gray
+    dst[:] = 255
+    dst = dst - img
     return dst
 def totalwt(img):
     x,y= img.shape
@@ -94,7 +97,9 @@ def threaholding_image_1(img):
     return gray
 def threaholding_image(img):
     test=cv2.threshold(img, 0, 255,cv2.THRESH_BINARY|cv2.THRESH_OTSU)[1]
-    if totalwt(test) <0.5:
+    nzero = cv2.countNonZero(test)
+    scale = nzero / img.size
+    if scale <0.5:
         img=turn_over_gray(img)
         test=bitwise_not(test)
     img=bitwise_or(test,threaholding_image_1(img))
@@ -107,6 +112,30 @@ def gray_image(img):
         imgbackup=turn_over_gray(imgbackup)
     img=mask_over(imgbackup,img)
     return img
+def color_split(img,n=5):
+    test=cv2.threshold(img, 0, 255,cv2.THRESH_BINARY|cv2.THRESH_OTSU)[1]
+    if totalwt(test) <0.5:
+        img=turn_over_gray(img)
+    imgInfo = img.shape
+    height = imgInfo[0]
+    width = imgInfo[1]
+    dst = np.zeros((height,width),np.uint8)
+    d1 = img.reshape(-1,1)
+    lth = d1.shape[0]
+    km =KMeans(n_clusters=n)
+    km.fit(d1)
+    lss  = []
+    ls = [0,1,2,3,4,5,6,7,8,9,10]
+    for i in range(n):
+        lss.append((km.cluster_centers_[i][0],i))
+    lss.sort()
+    for i in range(n):
+        ls[lss[i][1]]=i
+    d1 = np.array(pd.Series(km.labels_).to_list())
+    for i in range(lth):
+        d1[i] = int(255.0*ls[d1[i]]/(n-1))
+    d1 = d1.reshape((height,width))
+    return d1
 class CaptureScreen(QWidget):
     # 初始化变量
     beginPosition = None
@@ -220,9 +249,14 @@ class CaptureScreen(QWidget):
         ptr.setsize(height * width * 4)
         img = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
         img=cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        img=threaholding_image(img)
-        cv2.imwrite('clipboard.jpg', img)
-        subprocess.run(["osascript", "-e", 'set the clipboard to (read (POSIX file "clipboard.jpg") as JPEG picture)'])
+        img = img.astype("uint8")
+        # down_points = (int(img.shape[1]/img.shape[0]*500), 500)
+        # img = cv2.resize(img, down_points, interpolation= cv2.INTER_LINEAR)
+        img=img_threshold(img)
+        # img=color_split(img,6)
+        cv2.imwrite('pic/'+file_date_name, img)
+        cv2.imwrite('result.jpg', img)
+        subprocess.run(["osascript", "-e", 'set the clipboard to (read (POSIX file "result.jpg") as JPEG picture)'])
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     windows = CaptureScreen()
